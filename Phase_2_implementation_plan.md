@@ -18,8 +18,8 @@ We use **STUN (Session Traversal Utilities for NAT)**.
 
 ### C. The Production Reality (Symmetric NATs & TURN)
 In enterprise environments (corporate/university networks), strict firewalls block STUN. For these ~15% of users, P2P will fail. 
-- **Production Design:** We will architect the frontend so that it expects an `iceServers` array from the Python backend upon login. 
-- For now, the Python backend will serve the free STUN server. But when you are ready to commercialize, you simply update the Python server to provide paid **TURN server** credentials (e.g., Twilio or Metered) to fallback when STUN fails. *The frontend code will not need to change.*
+- **Graceful Failure UI:** If the WebRTC connection fails due to a strict firewall, the frontend will automatically detect this and display a **friendly UI prompt** explaining that their current network/VPN is blocking voice chat.
+- **Future-Proofing:** For now, the Python backend will serve the free STUN server. But when you are ready to commercialize, you simply update the Python server to provide paid **TURN server** credentials to fallback when STUN fails. *The frontend code will not need to change.*
 
 ---
 
@@ -47,14 +47,12 @@ Syncing YouTube videos across different internet speeds is complex because users
 
 ### The State Machine
 1. **Server Authority:** The Python server maintains the exact state of the Theater Room: `videoId`, `isPlaying`, `serverStartTime`, and `startOffset`.
-2. **Buffering Grace:** When the Admin presses "Play", the server tells all clients to load the video and buffer. It waits 2 seconds, then broadcasts a "Sync Execution" command so all clients start playing at the exact same millisecond.
-3. **Drift Correction:** Every 5 seconds, clients ping the server with their current playback time. If a client is lagging due to slow internet (drift > 2 seconds), the client's video is aggressively hard-seeked to match the server time.
+2. **Buffering Grace & Loading UI:** When the Admin presses "Play" (or skips to a new video), the server tells all clients to load the video. **An elegant "Syncing..." loading screen will overlay the video** so users know exactly why they are waiting. The server waits 2 seconds, then commands all clients to start playing at the exact same millisecond, removing the loading screen.
+3. **Drift Correction:** Every 5 seconds, clients ping the server. If a client is lagging due to slow internet, the client's video is aggressively hard-seeked to match the server time.
 
-### UI/UX Design
-Instead of copying `syncVibe` wholesale, we will build a custom, highly-polished **Cinematic Mode**.
-- The main chat slides away or becomes a translucent overlay.
-- A 20-seat visual grid displays connected avatars.
-- The YouTube IFrame dominates the screen with custom theater-lighting CSS effects behind it.
+### UI/UX & Queue System
+- **Cinematic UI:** The main chat becomes a translucent overlay, and a 20-seat visual grid displays connected avatars.
+- **Robust Playlist Queue:** We will implement a robust YouTube Queue system heavily referencing your `Sunofy` and `yt-fy` repositories. Users can request videos to be added to the queue, and the server will manage the playlist state, automatically advancing to the next video when one finishes.
 
 ---
 
@@ -66,7 +64,7 @@ Instead of copying `syncVibe` wholesale, we will build a custom, highly-polished
 - Build the persistent Ban System (JWT ID + IP).
 
 ### Phase 2B: Moderator & Admin Systems
-- Build the `pedarayudu.html` SuperAdmin dashboard (protected by master password).
+- Build the `pedarayudu.html` SuperAdmin dashboard.
 - Implement the "Server Master Switch" (On/Off override).
 - Add the hidden "Mod Invite Code" in settings to elevate users to Moderators.
 - Grant Mods the ability to Kick and Delete, logging all actions to the Database.
@@ -75,3 +73,4 @@ Instead of copying `syncVibe` wholesale, we will build a custom, highly-polished
 - Build the `theater.html` cinematic UI and ticketing logic (2-minute expiring URLs).
 - Implement the Authoritative Server State machine for YouTube syncing.
 - Implement the WebRTC audio integration for theater seats.
+- Implement the YouTube Queue & Playlist Request system.
