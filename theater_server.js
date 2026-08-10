@@ -35,7 +35,7 @@ io.on('connection', (socket) => {
                 admin_sid: socket.id,
                 queue: [],
                 video_id: 'aqz-KE-bpKQ',
-                is_playing: False, // Oops python syntax: false
+                is_playing: false,
                 current_time: 0
             };
             console.log(`[Theater] Room ${roomCode} created by ${socket.id}`);
@@ -72,6 +72,7 @@ io.on('connection', (socket) => {
         if (!roomState || roomState.admin_sid !== socket.id) return; // Only admin
         
         const cmd = data.command;
+        console.log(`[Theater] Command from ${socket.id} in ${roomCode}:`, cmd, data);
         
         if (cmd === 'load_video') {
             roomState.video_id = data.video_id;
@@ -95,35 +96,30 @@ io.on('connection', (socket) => {
         }
         else if (cmd === 'search_youtube') {
             const query = data.query || '';
-            const searchType = data.type || 'video';
             if (!query) return;
             
             try {
                 const r = await ytSearch(query);
-                let formatted_results = [];
                 
-                if (searchType === 'playlist') {
-                    const lists = r.lists.slice(0, 10);
-                    formatted_results = lists.map(p => ({
-                        id: p.listId,
-                        title: p.title,
-                        thumbnail: p.thumbnail,
-                        duration: `${p.videoCount} videos`,
-                        channel: p.author?.name || 'Unknown',
-                        type: 'playlist'
-                    }));
-                } else {
-                    const videos = r.videos.slice(0, 10);
-                    formatted_results = videos.map(v => ({
-                        id: v.videoId,
-                        title: v.title,
-                        thumbnail: v.thumbnail,
-                        duration: v.timestamp || '0:00',
-                        channel: v.author?.name || 'Unknown',
-                        type: 'video'
-                    }));
-                }
-                socket.emit('theater_search_results', formatted_results);
+                const videos = (r.videos || []).slice(0, 10).map(v => ({
+                    id: v.videoId,
+                    title: v.title,
+                    thumbnail: v.thumbnail,
+                    duration: v.timestamp || '0:00',
+                    channel: v.author?.name || 'Unknown',
+                    type: 'video'
+                }));
+                
+                const playlists = (r.lists || []).slice(0, 5).map(p => ({
+                    id: p.listId,
+                    title: p.title,
+                    thumbnail: p.thumbnail,
+                    duration: `${p.videoCount} videos`,
+                    channel: p.author?.name || 'Unknown',
+                    type: 'playlist'
+                }));
+                
+                socket.emit('theater_search_results', [...videos, ...playlists]);
             } catch (err) {
                 console.error("Search error:", err);
                 socket.emit('theater_search_results', []);

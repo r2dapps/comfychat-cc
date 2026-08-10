@@ -164,22 +164,20 @@ function onPlayerStateChange(event) {
 function searchYouTube() {
     const input = document.getElementById('video-url-input');
     const val = input.value.trim();
-    const type = document.getElementById('search-type').value;
     if(!val) return;
     
     if (isAdmin) {
         const videoId = extractYouTubeID(val);
-        if (videoId && type === 'video') {
+        if (videoId) {
             socket.emit('theater_command', { command: 'load_video', video_id: videoId });
-            showToast('Video loaded!', 'success');
             input.value = '';
         } else {
             showToast('Searching YouTube...', 'info');
             document.getElementById('search-results').innerHTML = '<div style="color:var(--text-muted); text-align:center;">Searching... <i class="fa-solid fa-spinner fa-spin"></i></div>';
-            socket.emit('theater_command', { command: 'search_youtube', query: val, type: type });
+            socket.emit('theater_command', { command: 'search_youtube', query: val });
         }
     } else {
-        showToast('Only Admins can search or change the video right now.', 'warning');
+        showToast('Only the admin can search for videos', 'error');
     }
 }
 

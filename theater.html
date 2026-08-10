@@ -90,12 +90,8 @@
                         <h3>Search & Request</h3>
                         <p class="subtitle">Search YouTube for videos or paste a URL to add to the queue.</p>
                     </div>
-                    <div class="search-bar">
-                        <select id="search-type" style="background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); color:white; padding:10px; border-radius:8px;">
-                            <option value="video">Video</option>
-                            <option value="playlist">Playlist</option>
-                        </select>
-                        <input type="text" id="video-url-input" placeholder="Search or paste URL...">
+                    <div class="search-bar glass-panel">
+                        <input type="text" id="video-url-input" placeholder="Search for videos or playlists..." onkeypress="if(event.key === 'Enter') searchYouTube()">
                         <button class="glass-btn primary icon-btn" onclick="searchYouTube()" title="Search">
                             <i class="fa-solid fa-magnifying-glass"></i>
                         </button>
