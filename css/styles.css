@@ -49,7 +49,7 @@ body { background-color: var(--bg-body); color: var(--text-main); height: 100vh;
 .workspace { display: flex; width: 100%; height: 100vh; position: relative;}
 
 /* Master Sidebar */
-.master-sidebar { display: flex; width: 380px; background: var(--bg-panel); border-right: 1px solid var(--border); flex-direction: column; position: relative; z-index: 20;}
+.master-sidebar { display: flex; width: 380px; background: var(--bg-panel); border-right: 1px solid var(--border); flex-direction: column; position: relative; z-index: 20; min-height: 0;}
 
 .sidebar-header { padding: 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-header); flex-shrink: 0; }
 .brand { font-weight: 800; font-size: 1.25rem; color: var(--accent); }
@@ -80,7 +80,7 @@ body { background-color: var(--bg-body); color: var(--text-main); height: 100vh;
 .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-panel); }
 
 /* Lists */
-.list-container { flex: 1; overflow-y: auto; display: none; flex-direction: column;}
+.list-container { flex: 1; min-height: 0; overflow-y: auto; display: none; flex-direction: column;}
 .list-container.active { display: flex; }
 .list-item { padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: 0.2s; }
 .list-item:hover { background: var(--bg-body); }

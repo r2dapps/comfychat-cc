@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Load Test ComfyChat</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Running Load Test (100 Users)</h1>
+    <div id="status">Spawning users...</div>
+    <script>
+        const USERS_TO_SPAWN = 100;
+        let spawned = 0;
+        let activeSockets = [];
+
+        function spawnUser(index) {
+            const socket = io('http://127.0.0.1:5000', { transports: ['websocket', 'polling'] });
+            
+            socket.on('connect', () => {
+                // Register user
+                socket.emit('join_room', {
+                    room: 'WORLD_CHAT',
+                    username: `QA_Bot_${index}`,
+                    peerId: `dummy_peer_${index}`,
+                    avatar: (index % 15), 
+                    interest: 'Load Testing',
+                    color: `hsl(${(index * 30) % 360}, 70%, 55%)`
+                });
+            });
+
+            socket.on('login_success', () => {
+                spawned++;
+                document.getElementById('status').innerText = `Spawned ${spawned}/${USERS_TO_SPAWN} users...`;
+                activeSockets.push(socket);
+
+                // Send a message after a brief delay so they stagger nicely
+                setTimeout(() => {
+                    socket.emit('send_group_message', {
+                        targetRoom: 'WORLD_CHAT',
+                        id: `msg_${index}_${Date.now()}`,
+                        message: `Hello from QA Bot ${index}! This is a load test message to verify that the chat UI scrolls properly and does not break under heavy load. The UI should remain smooth and the navbar/bottom tabs should remain perfectly in place.`,
+                        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                        timestamp: Date.now()
+                    });
+                }, 1000 + (index * 50)); // Stagger by 50ms
+            });
+        }
+
+        for (let i = 1; i <= USERS_TO_SPAWN; i++) {
+            // Stagger connections to avoid overwhelming the server instantly
+            setTimeout(() => {
+                spawnUser(i);
+            }, i * 20);
+        }
+    </script>
+</body>
+</html>
