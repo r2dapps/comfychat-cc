@@ -40,6 +40,15 @@ function createEmojiSvg(emoji, bgColor) {
     return `data:image/svg+xml;base64,${base64}`;
 }
 
+function getAvatarUrl(avatarData) {
+    if (!avatarData && avatarData !== 0) return '';
+    if (typeof avatarData === 'number' || !isNaN(Number(avatarData))) {
+        const idx = Number(avatarData);
+        if (emojisList[idx]) return createEmojiSvg(emojisList[idx].e, emojisList[idx].c);
+    }
+    return avatarData; // Legacy support for full SVG string
+}
+
 // --- 9x8 COLOR PALETTE (72 Colors) ---
 const hues = [0, 20, 40, 60, 120, 180, 210, 270, 315]; // 9 hue columns
 const lightnesses = [15, 25, 35, 45, 55, 65, 75, 85]; // 8 rows
@@ -213,7 +222,7 @@ function login() {
     }
 
     myProfile.username = username;
-    myProfile.avatar = createEmojiSvg(selectedAvatar.emoji, selectedAvatar.color);
+    myProfile.avatar = emojisList.indexOf(selectedAvatar); // Store index instead of full SVG
     
     let host = window.location.hostname;
     if (host.includes('github.io') || !host) host = '127.0.0.1'; 
@@ -317,7 +326,7 @@ function renderUsersList(filter = '') {
         const selfEl = document.createElement('div');
         selfEl.className = 'list-item disabled';
         selfEl.innerHTML = `
-            <div class="avatar-sm" style="background-image: url('${myProfile.avatar}')">
+            <div class="avatar-sm" style="background-image: url('${getAvatarUrl(myProfile.avatar)}')">
                 <div class="status-dot active"></div>
             </div>
             <div class="item-details">
@@ -342,7 +351,7 @@ function renderUsersList(filter = '') {
         el.onclick = () => openConversation(u.peerId, u.username, u.interest, 'direct');
         
         el.innerHTML = `
-            <div class="avatar-sm" style="background-image: url('${u.avatar}')">
+            <div class="avatar-sm" style="background-image: url('${getAvatarUrl(u.avatar)}')">
                 <div class="status-dot ${u.status}"></div>
             </div>
             <div class="item-details">
@@ -522,7 +531,7 @@ function renderChatsList() {
         
         const isOnline = !!roster[id];
         const statusClass = c.type === 'channel' ? '' : (isOnline ? roster[id].status : 'offline');
-        const avatarUrl = c.type === 'channel' ? createEmojiSvg('🌎', '#0284c7') : (isOnline ? roster[id].avatar : (c.msgs.length > 0 ? c.msgs[c.msgs.length-1].avatar : ''));
+        const avatarUrl = c.type === 'channel' ? createEmojiSvg('🌎', '#0284c7') : (isOnline ? getAvatarUrl(roster[id].avatar) : (c.msgs.length > 0 ? getAvatarUrl(c.msgs[c.msgs.length-1].avatar) : ''));
         
         let lastMsg = c.msgs.length > 0 ? c.msgs[c.msgs.length-1].message : 'No messages';
         if (c.msgs.length > 0 && c.msgs[c.msgs.length-1].deleted) lastMsg = 'This message was deleted';
@@ -587,7 +596,7 @@ function renderChatStream() {
                     <span class="time-stamp">${msg.edited ? '<span class="edited-tag">(edited)</span>' : ''}${msg.time}</span>
                 </div>
                 <div class="msg-inner">
-                    ${!isSelf ? `<div class="avatar-xs" style="background-image: url('${msg.avatar}')"></div>` : ''}
+                    ${!isSelf ? `<div class="avatar-xs" style="background-image: url('${getAvatarUrl(msg.avatar)}')"></div>` : ''}
                     <div class="msg-bubble ${msg.id === 'sys-rules' ? 'sys-mod' : ''}" style="background: ${bubbleColor};">
                         ${replyHtml}
                         <div class="msg-text">${msg.message}</div>
