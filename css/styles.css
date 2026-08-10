@@ -241,11 +241,11 @@ input:checked + .slider:before { transform: translateX(20px); }
 @media(max-width: 768px) {
     .workspace { position: relative; overflow: hidden; flex-direction: column;}
     /* Nav tabs fixed at bottom */
-    .master-sidebar { width: 100%; flex: 1; border: none; flex-direction: column; }
-    .sidebar-header { z-index: 10; }
+    .master-sidebar { width: 100%; flex: 1; border: none; flex-direction: column; padding-top: 55px; }
+    .sidebar-header { position: absolute; top: 0; left: 0; width: 100%; z-index: 200; height: 55px; padding: 0 1rem; background: var(--bg-header); }
     .list-container { flex: 1; }
     /* Detail pane sits above lists but below tabs */
-    .detail-pane { position: absolute; top: 0; left: 100%; width: 100%; height: calc(100% - 45px); transition: left 0.3s ease; z-index: 100; }
+    .detail-pane { position: absolute; top: 55px; left: 100%; width: 100%; height: calc(100% - 45px - 55px); transition: left 0.3s ease; z-index: 100; }
     .nav-tabs { border-bottom: none; border-top: 1px solid var(--border); flex-shrink: 0; z-index: 110;}
     .detail-pane.mobile-open { left: 0; }
     .back-btn { display: block; }
