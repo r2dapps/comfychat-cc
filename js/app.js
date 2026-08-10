@@ -74,7 +74,37 @@ colors.forEach(color => {
 const URL_REGEX = /(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.(com|net|org|io|co|in|us|uk|me|tv|info|edu|gov)\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/\/=]*)/gi;
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
 const HTML_REGEX = /<[^>]*>?/gm;
-const BAD_WORDS = ['shit', 'sex', 'nigga', 'fuck', 'bitch', 'ass', 'cunt', 'dick', 'porn', 'whore', 'slut', 'rape'];
+const BAD_WORDS = [
+  'fuck', 'fucker', 'fucking', 'fucked', 'fuckin', 'motherfuck', 'motherfucker', 'motherfucking',
+  'shit', 'shitty', 'bullshit', 'bitch', 'bitches', 'bitching', 'cunt', 'cunts',
+  'dick', 'dicks', 'dickhead', 'piss', 'pissed', 'asshole', 'assholes', 'dumbass', 'jackass',
+  'bastard', 'damn', 'dammit', 'crap',
+  'sex', 'sexual', 'sexy', 'porn', 'porno', 'pornography', 'xxx', 'xxxt',
+  'nude', 'nudes', 'nudity', 'naked', 'nsfw', 'horny', 'orgasm', 'orgasms', 'cum', 'cumming', 'semen',
+  'blowjob', 'blowjobs', 'handjob', 'handjobs', 'dildo', 'dildos', 'vibrator',
+  'masturbate', 'masturbation', 'erection', 'penis', 'vagina', 'vulva', 'boob', 'boobs',
+  'tits', 'titty', 'nipple', 'nipples', 'whore', 'whores', 'slut', 'sluts', 'prostitute', 'hooker',
+  'rape', 'raped', 'raping', 'rapist', 'molest', 'molested', 'molester',
+  'fap', 'fapping', 'horniness', '69', 'deepthroat', 'suck', 'sucking', 'threesome', 'orgy', 'anal', 'erect', 'boner',
+  'nigga', 'nigger', 'fag', 'faggot', 'retard', 'retarded', 'dyke', 'kike', 'spic', 'chink', 'gook', 'wetback',
+  'madarchod', 'madharchod', 'bc', 'mc', 'bhenchod', 'behenchod', 'benchod',
+  'chutiya', 'chutiye', 'chut', 'gaand', 'gand', 'gaandfat', 'gaandmar',
+  'lund', 'lauda', 'lavda', 'loda', 'lodu', 'randi', 'rand',
+  'harami', 'haraami', 'kamina', 'kamine', 'bhosdi', 'bhosdike', 'bhosadike',
+  'jhaat', 'jhat', 'jhantu', 'suar', 'kutte', 'kutti',
+  'lanja', 'lanjakoduku', 'lanjakodaka', 'dengudu', 'dengey', 'denge',
+  'dengutha', 'dengutaa', 'puku', 'pukulo', 'modda', 'moddalu', 'moddagudu',
+  'moddaguduvu', 'nee amma', 'nee ayya', 'lanja koduku', 'erripuku',
+  'erripuk', 'sulli', 'sulliga',
+  'wtf', 'stfu', 'gtfo', 'milf', 'dilf', 'bj', 'hj', 'fml',
+  'cocaine', 'coke', 'heroin', 'meth', 'crack', 'ecstasy', 'mdma', 'lsd', 'weed', 'marijuana', 'stoned', 'blunt', 'joint'
+];
+
+function buildBadWordRegex(word) {
+    const charMap = { 'a': '[a@4]+', 'e': '[e3]+', 'i': '[i1!|]+', 'o': '[o0]+', 's': '[s5$]+', 't': '[t7]+' };
+    const pattern = word.split('').map(c => charMap[c] || (c === ' ' ? '\\s+' : `${c}+`)).join('[\\s._*+\\-]*');
+    return new RegExp(`\\b${pattern}\\b`, 'gi');
+}
 
 function sanitizeInput(text) {
     let clean = text.replace(HTML_REGEX, "");
@@ -82,7 +112,7 @@ function sanitizeInput(text) {
     clean = clean.replace(URL_REGEX, "[link blocked]");
     
     BAD_WORDS.forEach(word => {
-        const regex = new RegExp(`\\b${word}\\b`, 'gi');
+        const regex = buildBadWordRegex(word);
         clean = clean.replace(regex, match => {
             if (match.length <= 2) return match;
             return match[0] + '*'.repeat(match.length - 2) + match[match.length - 1];

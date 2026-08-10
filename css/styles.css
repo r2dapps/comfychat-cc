@@ -182,7 +182,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 .quoted-msg { background: rgba(0,0,0,0.15); border-left: 3px solid rgba(255,255,255,0.3); padding: 0.4rem; border-radius: 4px; font-size: 0.8rem; margin-bottom: 0.4rem; color: inherit; opacity: 0.9;}
 
 /* 3-Dot Menu & Reactions */
-.msg-menu-wrap { position: relative; display: flex; align-items: center; opacity: 0; transition: 0.2s; padding: 0 0.5rem; align-self: center;}
+.msg-menu-wrap { display: flex; align-items: center; opacity: 0; transition: 0.2s; padding: 0 0.5rem; align-self: center;}
 .msg-inner:hover .msg-menu-wrap { opacity: 1; }
 .kebab-icon { width: 20px; height: 20px; fill: var(--text-muted); cursor: pointer; padding: 2px; border-radius: 50%; }
 .kebab-icon:hover { fill: var(--text-main); background: var(--border); }
