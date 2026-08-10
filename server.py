@@ -6,7 +6,7 @@ import re
 from flask import Flask, send_from_directory
 
 sio = socketio.Server(cors_allowed_origins='*')
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_folder='.', static_url_path='')
 app.wsgi_app = socketio.WSGIApp(sio, app.wsgi_app)
 
 room_members = {}

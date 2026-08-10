@@ -34,10 +34,10 @@ emojisList.forEach((a, idx) => {
     avatarContainer.appendChild(div);
 });
 
-// FIXED SVG Generator (UTF8 is fully supported if correctly encoded)
 function createEmojiSvg(emoji, bgColor) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${bgColor}"/><text x="50" y="50" font-size="60" text-anchor="middle" dominant-baseline="central">${emoji}</text></svg>`;
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    const base64 = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${base64}`;
 }
 
 // --- 9x8 COLOR PALETTE (72 Colors) ---
