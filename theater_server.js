@@ -1,9 +1,60 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const ytSearch = require('yt-search');
+
+async function fetchPlaylistFallback(listId) {
+    return new Promise((resolve, reject) => {
+        https.get(`https://www.youtube.com/playlist?list=${listId}`, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                const match = data.match(/var ytInitialData = (\{.*?\});<\/script>/);
+                if (!match) return reject(new Error("ytInitialData not found"));
+                
+                try {
+                    const jsonData = JSON.parse(match[1]);
+                    let videos = [];
+                    let seen = new Set();
+                    
+                    function findLockups(obj) {
+                        if (!obj || typeof obj !== 'object') return;
+                        if (Array.isArray(obj)) return obj.forEach(findLockups);
+                        
+                        if (obj.playlistVideoViewModel || obj.lockupViewModel) {
+                            const lockup = obj.playlistVideoViewModel || obj.lockupViewModel;
+                            const videoId = lockup.contentId || lockup.videoId;
+                            const title = lockup.title?.content || lockup.metadata?.lockupMetadataViewModel?.title?.content;
+                            
+                            let channel = "YouTube";
+                            try { channel = lockup.metadata.lockupMetadataViewModel.metadata.contentMetadataViewModel.metadataRows[0].metadataParts[0].text.content; } catch(e) {}
+                            
+                            let thumbnail = "";
+                            try {
+                                const sources = lockup.contentImage.thumbnailViewModel.image.sources;
+                                thumbnail = sources[sources.length - 1].url;
+                            } catch(e) {}
+
+                            if (videoId && title && !seen.has(videoId)) {
+                                seen.add(videoId);
+                                videos.push({ videoId, title, thumbnail, author: { name: channel } });
+                            }
+                        }
+                        Object.values(obj).forEach(findLockups);
+                    }
+                    
+                    findLockups(jsonData);
+                    resolve({ videos });
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }).on('error', reject);
+    });
+}
 
 const app = express();
 app.use(cors());
@@ -132,7 +183,9 @@ io.on('connection', (socket) => {
             if (!playlistId) return;
             
             try {
-                const list = await ytSearch({ listId: playlistId });
+                // Try fallback custom HTML parser directly because ytSearch listId is currently broken
+                const list = await fetchPlaylistFallback(playlistId);
+                
                 if (list && list.videos && list.videos.length > 0) {
                     const first20 = list.videos.slice(0, 20);
                     
