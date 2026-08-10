@@ -16,15 +16,39 @@
     <!-- Toast notifications -->
     <div id="toast-container"></div>
 
-    <!-- Ticket Overlay for users without a room -->
+    <!-- Ticket Overlay / Lobby for users -->
     <div id="ticket-overlay" class="modal-overlay">
-        <div class="modal-content glass-panel" style="text-align: center;">
+        <div class="modal-content glass-panel" style="text-align: center; max-width: 400px;">
             <i class="fa-solid fa-ticket fa-3x" style="color:var(--primary); margin-bottom:15px;"></i>
-            <h3>Create a Theater Ticket</h3>
-            <p style="color:var(--text-muted); margin-bottom: 20px;">Generate a unique room ticket to invite friends.</p>
-            <button class="glass-btn primary" onclick="generateTicket()" style="width:100%;">
-                <i class="fa-solid fa-magic"></i> Generate Ticket
-            </button>
+            
+            <!-- Create Room Section -->
+            <div id="lobby-create-section">
+                <h3>Create a Theater Ticket</h3>
+                <p style="color:var(--text-muted); margin-bottom: 20px;">Generate a unique room ticket to invite friends.</p>
+                <button class="glass-btn primary" onclick="generateTicket()" style="width:100%;">
+                    <i class="fa-solid fa-magic"></i> Generate Ticket
+                </button>
+            </div>
+            
+            <!-- Join Room Section -->
+            <div id="lobby-join-section" style="display:none; text-align: left;">
+                <h3 style="text-align: center; margin-bottom: 20px;">Join Theater</h3>
+                
+                <label style="display:block; margin-bottom:5px; font-weight:bold; color:var(--text-light);">Select Avatar</label>
+                <div id="avatar-selector" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; justify-content: center;">
+                    <!-- Avatars injected by JS -->
+                </div>
+                
+                <label style="display:block; margin-bottom:5px; font-weight:bold; color:var(--text-light);">Choose Username</label>
+                <input type="text" id="username-input" class="search-select" placeholder="e.g. MovieBuff99" maxlength="15" style="width:100%; margin-bottom:15px; background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); color:white; padding:10px; border-radius:8px;">
+                
+                <label style="display:block; margin-bottom:5px; font-weight:bold; color:var(--text-light);">Your Interests</label>
+                <input type="text" id="interests-input" class="search-select" placeholder="e.g. Sci-Fi, Anime, Coding" maxlength="25" style="width:100%; margin-bottom:20px; background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); color:white; padding:10px; border-radius:8px;">
+                
+                <button class="glass-btn primary" onclick="joinTheaterFromLobby()" style="width:100%;">
+                    <i class="fa-solid fa-right-to-bracket"></i> Enter Theater
+                </button>
+            </div>
         </div>
     </div>
 
@@ -146,6 +170,24 @@
             <div class="modal-actions">
                 <button class="glass-btn danger" onclick="closeModal('seat-booking-modal')">Cancel</button>
                 <button class="glass-btn primary" onclick="confirmSeatBooking()">Confirm Seat</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="user-profile-modal" style="display:none;">
+        <div class="glass-modal" style="text-align: center;">
+            <div id="profile-modal-avatar" style="font-size: 60px; margin-bottom: 10px;">👤</div>
+            <h3 id="profile-modal-name" style="margin-bottom: 5px;">Username</h3>
+            <p id="profile-modal-interests" style="color:var(--text-muted); margin-bottom: 20px; font-size: 0.9em;">Interests here</p>
+            
+            <div class="modal-actions" style="justify-content: center; gap: 15px;">
+                <button class="glass-btn primary" onclick="dmUserFromProfile()">
+                    <i class="fa-solid fa-message"></i> Direct Message
+                </button>
+                <button class="glass-btn" onclick="mentionUserFromProfile()">
+                    <i class="fa-solid fa-at"></i> Mention
+                </button>
+                <button class="glass-btn danger" onclick="closeModal('user-profile-modal')">Close</button>
             </div>
         </div>
     </div>

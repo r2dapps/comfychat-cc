@@ -7,25 +7,78 @@ let currentSeatSelected = null;
 let ytPlayer = null;
 let socket = null;
 let isAdmin = false;
-let myName = 'User_' + Math.floor(Math.random() * 1000);
+let myName = '';
+let myAvatar = '👤';
+let myInterests = '';
 let roomCode = null;
 
 // Initialize Theater Environment
 document.addEventListener('DOMContentLoaded', () => {
     initSeatingGrid();
     initMockQueue();
+    populateAvatars();
     
     // Check for room ticket
     const urlParams = new URLSearchParams(window.location.search);
     roomCode = urlParams.get('room');
     
     if (roomCode) {
-        document.getElementById('ticket-overlay').style.display = 'none';
-        connectToServer();
+        document.getElementById('ticket-overlay').style.display = 'flex';
+        document.getElementById('lobby-create-section').style.display = 'none';
+        document.getElementById('lobby-join-section').style.display = 'block';
     } else {
         document.getElementById('ticket-overlay').style.display = 'flex';
+        document.getElementById('lobby-create-section').style.display = 'block';
+        document.getElementById('lobby-join-section').style.display = 'none';
     }
 });
+
+const AVATARS = ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵'];
+
+function populateAvatars() {
+    const selector = document.getElementById('avatar-selector');
+    if(!selector) return;
+    selector.innerHTML = '';
+    
+    AVATARS.forEach(emoji => {
+        const div = document.createElement('div');
+        div.className = 'avatar-option';
+        div.innerText = emoji;
+        div.style.fontSize = '24px';
+        div.style.padding = '5px';
+        div.style.cursor = 'pointer';
+        div.style.borderRadius = '50%';
+        div.style.transition = 'transform 0.2s';
+        
+        div.onclick = () => {
+            document.querySelectorAll('.avatar-option').forEach(el => {
+                el.style.background = 'transparent';
+                el.style.transform = 'scale(1)';
+            });
+            div.style.background = 'rgba(255,255,255,0.2)';
+            div.style.transform = 'scale(1.2)';
+            myAvatar = emoji;
+        };
+        
+        selector.appendChild(div);
+    });
+}
+
+function joinTheaterFromLobby() {
+    const uInput = document.getElementById('username-input').value.trim();
+    const iInput = document.getElementById('interests-input').value.trim();
+    
+    if (!uInput) {
+        showToast('Please enter a username!', 'danger');
+        return;
+    }
+    
+    myName = uInput;
+    myInterests = iInput;
+    
+    document.getElementById('ticket-overlay').style.display = 'none';
+    connectToServer();
+}
 
 function generateTicket() {
     // Generate a simple random room code
@@ -113,6 +166,18 @@ function connectToServer() {
                 </div>
             </div>
         `).join('');
+    });
+
+    socket.on('theater_seats_sync', (seats) => {
+        renderSeats(seats);
+    });
+
+    socket.on('seat_updated', (data) => {
+        renderSeat(data.seatId, data.occupant);
+    });
+
+    socket.on('book_seat_error', (data) => {
+        showToast(data.message, 'danger');
     });
 }
 
@@ -275,10 +340,37 @@ function initSeatingGrid() {
         const seat = document.createElement('div');
         seat.className = 'seat';
         seat.id = `seat-${i}`;
+        seat.dataset.seatId = i;
         
         seat.innerHTML = `<div class="seat-number">${i}</div>`;
         seat.onclick = () => promptBookSeat(i);
         grid.appendChild(seat);
+    }
+}
+
+function renderSeats(seats) {
+    for (let i = 1; i <= 20; i++) {
+        renderSeat(i, seats[i]);
+    }
+}
+
+function renderSeat(seatId, occupant) {
+    const seat = document.getElementById(`seat-${seatId}`);
+    if (!seat) return;
+    
+    if (occupant) {
+        seat.classList.add('occupied');
+        seat.innerHTML = `
+            <div class="seat-avatar">${occupant.avatar}</div>
+            <div class="seat-name">${occupant.username}</div>
+        `;
+        seat.dataset.occupantInfo = JSON.stringify(occupant);
+        seat.onclick = () => showUserProfile(seatId);
+    } else {
+        seat.classList.remove('occupied');
+        seat.innerHTML = `<div class="seat-number">${seatId}</div>`;
+        seat.dataset.occupantInfo = '';
+        seat.onclick = () => promptBookSeat(seatId);
     }
 }
 
@@ -290,16 +382,45 @@ function promptBookSeat(seatId) {
 function confirmSeatBooking() {
     if (!currentSeatSelected) return;
     
-    const seat = document.getElementById(`seat-${currentSeatSelected}`);
-    seat.classList.add('occupied');
-    seat.innerHTML = `
-        <div class="seat-avatar">🐶</div>
-        <div class="seat-name">${myName}</div>
-    `;
-    seat.onclick = null; 
+    socket.emit('book_seat', {
+        seatId: currentSeatSelected,
+        profile: { avatar: myAvatar, interests: myInterests }
+    });
     
     closeModal('seat-booking-modal');
-    showToast('Seat booked! WebRTC Voice activated.', 'success');
+}
+
+let profileTargetUser = null;
+
+function showUserProfile(seatId) {
+    const seat = document.getElementById(`seat-${seatId}`);
+    if (!seat || !seat.dataset.occupantInfo) return;
+    
+    try {
+        const occupant = JSON.parse(seat.dataset.occupantInfo);
+        profileTargetUser = occupant.username;
+        
+        document.getElementById('profile-modal-avatar').innerText = occupant.avatar;
+        document.getElementById('profile-modal-name').innerText = occupant.username;
+        document.getElementById('profile-modal-interests').innerText = occupant.interests ? occupant.interests : 'No interests provided';
+        
+        document.getElementById('user-profile-modal').style.display = 'flex';
+    } catch(err) {
+        console.error(err);
+    }
+}
+
+function dmUserFromProfile() {
+    showToast(`Direct message feature to ${profileTargetUser} coming in Phase 3!`, 'info');
+    closeModal('user-profile-modal');
+}
+
+function mentionUserFromProfile() {
+    closeModal('user-profile-modal');
+    switchTab('chat');
+    const input = document.getElementById('chat-input');
+    input.value = `@${profileTargetUser} ` + input.value;
+    input.focus();
 }
 
 function closeModal(id) {

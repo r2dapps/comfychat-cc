@@ -34,6 +34,7 @@ io.on('connection', (socket) => {
             theaterRooms[roomCode] = {
                 admin_sid: socket.id,
                 queue: [],
+                seats: {}, // seatId -> { username, avatar, interests, sid }
                 video_id: 'aqz-KE-bpKQ',
                 is_playing: false,
                 current_time: 0
@@ -53,6 +54,7 @@ io.on('connection', (socket) => {
             current_time: roomState.current_time
         });
         socket.emit('theater_queue_update', roomState.queue);
+        socket.emit('theater_seats_sync', roomState.seats);
         
         const welcomeMsg = isAdmin 
             ? `Welcome Admin ${username}! You control the theater.`
@@ -168,9 +170,54 @@ io.on('connection', (socket) => {
         });
     });
 
+    socket.on('book_seat', (data) => {
+        const roomCode = socket.data?.room;
+        if (!roomCode || !theaterRooms[roomCode]) return;
+        
+        const roomState = theaterRooms[roomCode];
+        const seatId = data.seatId;
+        const profile = data.profile || {};
+        
+        // Check if seat is already occupied
+        if (roomState.seats[seatId]) {
+            socket.emit('book_seat_error', { message: 'Seat already occupied!' });
+            return;
+        }
+        
+        // Remove user from any old seat they were in
+        for (const [sId, sData] of Object.entries(roomState.seats)) {
+            if (sData.sid === socket.id) {
+                delete roomState.seats[sId];
+                io.to(roomCode).emit('seat_updated', { seatId: sId, occupant: null });
+            }
+        }
+        
+        // Book the new seat
+        const occupant = {
+            username: socket.data.username,
+            avatar: profile.avatar || '👤',
+            interests: profile.interests || '',
+            sid: socket.id
+        };
+        roomState.seats[seatId] = occupant;
+        
+        // Broadcast the update
+        io.to(roomCode).emit('seat_updated', { seatId: seatId, occupant: occupant });
+    });
+
     socket.on('disconnect', () => {
         console.log(`[Theater] Disconnect: ${socket.id}`);
-        // Optional: Assign new admin if old admin leaves
+        const roomCode = socket.data?.room;
+        if (roomCode && theaterRooms[roomCode]) {
+            const roomState = theaterRooms[roomCode];
+            // Clear their seat
+            for (const [sId, sData] of Object.entries(roomState.seats)) {
+                if (sData.sid === socket.id) {
+                    delete roomState.seats[sId];
+                    io.to(roomCode).emit('seat_updated', { seatId: sId, occupant: null });
+                }
+            }
+        }
     });
 });
 
