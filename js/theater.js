@@ -167,8 +167,14 @@ function searchYouTube() {
     if(!val) return;
     
     if (isAdmin) {
+        const playlistId = extractPlaylistID(val);
         const videoId = extractYouTubeID(val);
-        if (videoId) {
+        
+        if (playlistId) {
+            socket.emit('theater_command', { command: 'load_playlist', playlist_id: playlistId });
+            showToast('Loading playlist...', 'info');
+            input.value = '';
+        } else if (videoId) {
             socket.emit('theater_command', { command: 'load_video', video_id: videoId });
             input.value = '';
         } else {
@@ -216,6 +222,12 @@ function extractYouTubeID(url) {
     const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
     const match = url.match(regExp);
     return (match && match[7].length === 11) ? match[7] : false;
+}
+
+function extractPlaylistID(url) {
+    const regExp = /[?&]list=([^#\&\?]+)/;
+    const match = url.match(regExp);
+    return match ? match[1] : false;
 }
 
 // --- Layout & Native Fullscreen ---
