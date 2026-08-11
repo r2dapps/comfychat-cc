@@ -1,77 +1,72 @@
-# ComfyChat Phase 2: The Theater Microservice
+# ComfyChat Phase 2: The Complete Ecosystem Plan
 
-This document outlines the final, robust architecture for the Node.js Theater Microservice. It is designed to be a standalone, plug-and-play module with strict Admin controls and massive media support.
-
----
-
-## 1. Supported Media Sources
-
-We are engineering the Theater to support the maximum amount of media possible without violating DRM restrictions. 
-
-### ✅ Official Iframe Support (Synced via Iframe APIs)
-- **YouTube:** Native support with zero API keys required.
-- **Vimeo:** Official player embedding.
-- **Dailymotion:** Official player embedding.
-- **Twitch:** Live streams and VODs.
-
-### ✅ Direct Cloud Media (Synced via HTML5 `<video>`)
-- **Direct `.mp4` / `.webm` URLs:** Any direct video link hosted on AWS, Cloudinary, etc.
-- **Google Drive Videos:** Using the Google Drive direct-download link trick, we can stream Drive videos straight into the HTML5 player!
-
-### ✅ Huge Local Files (2GB+ Movies)
-- **WebTorrent Sync:** You select a 2GB movie on your PC. Your browser "seeds" it to your friends via WebRTC data channels. They stream it directly from you without any cloud servers involved.
-- **Bring-Your-Own-File:** Everyone downloads the exact same 2GB movie file beforehand. Everyone selects the file locally on their own PC. The server simply syncs the timestamps (`play`/`pause`/`seek`), using zero bandwidth!
-
-*(Note: Netflix, Prime Video, and Hulu are strictly blocked by DRM and cannot be embedded in this app).*
+To ensure we do not lose track of the core `comfyChat-cc` project while building the Theater, this plan covers the **entire ecosystem**. We are building a robust, dual-backend microservices architecture that can scale infinitely on free cloud tiers or run flawlessly on a single local PC.
 
 ---
 
-## 2. Admin vs. Member Roles (Clean Structure)
+## 1. Hosting Architecture Strategies
 
-We must define strict boundaries between who controls the theater and who watches.
+You proposed a brilliant strategy to stay on the free tier forever. We will design the code to support two distinct hosting environments:
 
-### How Roles are Defined
-1. **The Admin (Projectionist):** The user who clicks "Generate Ticket" in the Box Office Lobby is officially the **Room Creator**. 
-   - The Node.js server generates an **Admin Token (JWT)** for this specific user. 
-   - Only a browser holding this Admin Token will render the "Projection Booth" controls.
-2. **The Members (Audience):** When the Admin shares the ticket link with friends, those friends join as Members.
-   - They receive a **Guest Token**. 
-   - They can chat, react with emojis, and book seats for voice chat, but they *cannot* control the movie.
+### A. The "Forever Free" Split-Cloud Strategy
+To prevent exceeding CPU/RAM limits on free platforms (like Render), we will deploy the two services completely separately:
+- **Server 1 (Python Chat Backend):** Hosted on Render Account A (or Heroku). Handles World Chat, DMs, WebRTC signaling, and the `pedarayudu.html` Admin controls.
+- **Server 2 (Node.js Theater Backend):** Hosted on Render Account B (or Railway/Vercel). Dedicated entirely to YouTube scraping (via Innertube API), queue management, and video state syncing.
+- **The Bridge:** Both servers connect to the same **Firebase RTDB**. This acts as the central brain. If you ban a user via `pedarayudu.html` on Server 1, the Firebase database instantly notifies Server 2 to kick them from the Theater.
 
-### The Projection Booth (Admin Powers)
-The Admin has exclusive access to a hidden control panel below the video:
-- **Search & Add to Queue:** The Admin can search for videos or paste URLs.
-- **Start Show:** Initiates the 10-second cinematic countdown timer for everyone.
-- **Force Sync:** If a user gets an ad or their internet lags, the Admin clicks this to instantly drag all members to the correct timestamp.
-- **Kick Member:** The Admin can boot disruptive users from the theater.
-
-### Member Powers
-- **Request a Song/Movie:** Members can search for videos, but clicking them does *not* add them to the queue. It sends a "Request" to the Admin, who can approve or deny it.
+### B. The "Dedicated Local PC" Strategy
+When you want maximum performance without cloud limits, you can host the entire ecosystem from your laptop or a dedicated PC at home.
+- You simply run both `python server.py` (Port 5000) and `node theater_server.js` (Port 5001) simultaneously on your PC.
+- You map your router's port forwarding to your PC, or use a tool like Ngrok/Cloudflare Tunnels. 
+- You still use Firebase RTDB as the database, ensuring your bans and admin logs persist even if you shut your PC down for the night.
 
 ---
 
-## 3. The Search Engine (youtubei.js)
+## 2. Core Comfy-Chat (`pedarayudu.html`) Administration
 
-You asked to make sure the keyless search is legit and handles huge playlists like your `Sunofy` local mode.
-- **What is it?** We will use `youtubei.js` (The Innertube API). 
-- **Is it legit?** Yes. This is the exact internal API that the official YouTube Web Client and YouTube Music app use. It does not scrape HTML (which is what gets you IP-blocked). It talks directly to YouTube's internal JSON endpoints.
-- **Capabilities:** It can instantly pull massive 100+ track playlists, full channel uploads, and high-quality search results without ever needing an API key. It is the most robust keyless solution available.
+We will build the core SuperAdmin dashboard on the Python backend.
+
+### The "Pedarayudu" Dashboard
+- A hidden frontend interface strictly for you.
+- **Server Active Status:** A manual `[ON / OFF]` toggle. When switched OFF, the app blocks all new connections and kicks current users from *both* the chat and the theater.
+- **Persistent Device Banning:** Implements IP Ban + local `localStorage` Ban token to ensure users cannot simply bypass the block with a VPN.
+- **Moderator Logs:** View activity logs of on-ground moderators (who kick/delete messages in chat).
 
 ---
 
-## 4. Execution Phases
+## 3. The Node.js Theater Microservice
 
-### Phase 2A: Node.js Security & Roles
-- Implement the Admin Token (JWT) vs Guest Token generation in `theater_server.js`.
-- Integrate `youtubei.js` for massive, keyless playlist/search fetching.
-- Wire up Firebase RTDB to save the Room State persistently.
+### Supported Media Sources
+- **Official Iframes:** YouTube (via keyless `youtubei.js`), Vimeo, Dailymotion, Twitch.
+- **Cloud Media:** Direct `.mp4` URLs and Google Drive videos synced via HTML5 `<video>`.
+- **2GB+ Local Files:** Synced via WebTorrent (P2P seeding) or the "Bring Your Own File" local-selection method (zero bandwidth).
 
-### Phase 2B: The True Theater UI/UX
-- Build the "Lobby" for ticketing and seat booking.
-- Build the "Cinematic UI" (dark ambient lighting, curtains, embedded iframe).
-- Add the collapsible Emoji Reaction Card (🍿, 😱, 😂).
+### Admin vs. Member Roles (Clean Structure)
+1. **The Admin (Projectionist):** The room creator receives an **Admin JWT**. They control the "Projection Booth" (Add to Queue, Start Show Countdown, Force Sync).
+2. **The Members (Audience):** Users clicking the ticket link receive a **Guest JWT**. They can chat and react (🍿, 😱) but can only *request* videos for the Admin to approve.
 
-### Phase 2C: The Projection Booth & Advanced Media
-- Build the strict Admin controls (Add to Queue, Force Sync, Approve Requests).
-- Implement HTML5 `<video>` syncing for Google Drive and Local Files.
-- Wrap the app in a PWA `manifest.json` for future Android APK conversion.
+### The True Theater UX
+- **Box Office:** A Lobby to pick an avatar and book a seat before entering.
+- **Cinematic UI:** Dark ambient lighting, curtains, and an embedded iframe with collapsible side panels.
+- **PWA:** A `manifest.json` allows users to install the Theater/Chat as a native Android app.
+
+---
+
+## 4. Execution Roadmap
+
+We will build the Core Chat Admin first, then bridge the Theater.
+
+### Phase 2A: The Python Core & Pedarayudu
+- Implement Firebase RTDB connection in `server.py`.
+- Generate Admin/Guest JWTs.
+- Build the `pedarayudu.html` SuperAdmin Ban system and Master Switch.
+
+### Phase 2B: Node.js Security & The Theater Bridge
+- Wire `theater_server.js` to the same Firebase RTDB.
+- Implement JWT verification so the Theater respects Python's bans.
+- Replace `yt-search` with `youtubei.js` for keyless scraping.
+
+### Phase 2C: The True Theater UI/UX
+- Rebuild `theater.html` with the Box Office Lobby and Cinematic countdown.
+- Implement the "Add to Queue" strict Projection Booth controls.
+- Finalize PWA capabilities.
