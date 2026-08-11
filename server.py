@@ -4,6 +4,30 @@ import eventlet
 import socketio
 import re
 from flask import Flask, send_from_directory
+import hmac
+import hashlib
+import json
+import base64
+import uuid
+from db_manager import db
+
+SECRET_KEY = "SUPER_SECRET_COMFY_KEY_123"
+
+def encode_jwt(payload):
+    header = base64.urlsafe_b64encode(json.dumps({"alg":"HS256","typ":"JWT"}).encode()).decode().rstrip("=")
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    signature = base64.urlsafe_b64encode(hmac.new(SECRET_KEY.encode(), f"{header}.{payload_b64}".encode(), hashlib.sha256).digest()).decode().rstrip("=")
+    return f"{header}.{payload_b64}.{signature}"
+
+def decode_jwt(token):
+    try:
+        header, payload_b64, signature = token.split(".")
+        expected_sig = base64.urlsafe_b64encode(hmac.new(SECRET_KEY.encode(), f"{header}.{payload_b64}".encode(), hashlib.sha256).digest()).decode().rstrip("=")
+        if signature != expected_sig: return None
+        payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload_b64).decode())
+    except:
+        return None
 
 sio = socketio.Server(cors_allowed_origins='*')
 app = Flask(__name__, static_folder='.', static_url_path='')
@@ -22,13 +46,73 @@ def is_username_valid(username):
     # Allow letters, numbers, spaces, and specific safe symbols
     return bool(re.match(r'^[a-zA-Z0-9 _\-❤★]+$', username))
 
+from flask import Flask, send_from_directory, request, jsonify
+
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
 
+@app.route('/pedarayudu')
+def admin_panel():
+    return send_from_directory('.', 'pedarayudu.html')
+
+# SUPER ADMIN API
+SUPER_ADMIN_PW = "PEDARAYUDU-2026"
+
+def is_superadmin():
+    return request.headers.get('Authorization') == SUPER_ADMIN_PW
+
+@app.route('/api/admin/bans', methods=['GET'])
+def get_bans():
+    if not is_superadmin(): return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(db.get_all_bans())
+
+@app.route('/api/admin/logs', methods=['GET'])
+def get_logs():
+    if not is_superadmin(): return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(db.get_admin_logs())
+
+@app.route('/api/admin/ban', methods=['POST'])
+def ban_user():
+    if not is_superadmin(): return jsonify({"error": "Unauthorized"}), 401
+    data = request.json
+    success = db.add_ban(data['user_id'], data['ip_address'], data.get('reason', 'Violation'), 'SuperAdmin')
+    
+    # Kick from active socket sessions
+    for room, members in room_members.items():
+        for sid, sdata in list(members.items()):
+            if sdata.get('user_id') == data['user_id'] or sdata.get('ip') == data['ip_address']:
+                sio.emit('login_error', {'message': 'You have been banned by the SuperAdmin.'}, room=sid)
+                sio.disconnect(sid)
+                
+    db.log_admin_action('SuperAdmin', 'BAN', data)
+    return jsonify({"success": success})
+
+@app.route('/api/admin/unban', methods=['POST'])
+def unban_user():
+    if not is_superadmin(): return jsonify({"error": "Unauthorized"}), 401
+    data = request.json
+    db.remove_ban(data['user_id'])
+    db.log_admin_action('SuperAdmin', 'UNBAN', data)
+    return jsonify({"success": True})
+
 @sio.event
-def connect(sid, environ):
-    pass 
+def connect(sid, environ, auth=None):
+    ip_address = environ.get('REMOTE_ADDR', '127.0.0.1')
+    token = auth.get('token') if auth else None
+    
+    user_payload = decode_jwt(token) if token else None
+    if not user_payload:
+        user_payload = {"user_id": str(uuid.uuid4()), "role": "guest"}
+        
+    if db.is_banned(user_payload['user_id'], ip_address):
+        raise socketio.exceptions.ConnectionRefusedError("Banned")
+        
+    sio.save_session(sid, {
+        'user_id': user_payload['user_id'], 
+        'role': user_payload['role'], 
+        'ip': ip_address
+    })
 
 @sio.event
 def join_room(sid, data):
@@ -48,6 +132,25 @@ def join_room(sid, data):
     interest = data.get('interest', 'Just chatting')
     
     sio.enter_room(sid, room)
+    
+    base_session = sio.get_session(sid)
+    
+    if db.is_banned(base_session['user_id'], base_session['ip']):
+        sio.emit('login_error', {'message': 'You are banned.'}, room=sid)
+        return
+        
+    # Check Mod Code
+    if data.get('modCode') == 'MOD-2026':
+        db.add_moderator(base_session['user_id'], username)
+        base_session['role'] = 'moderator'
+        
+    if db.is_moderator(base_session['user_id']):
+        base_session['role'] = 'moderator'
+        
+    # Issue fresh token
+    new_token = encode_jwt({"user_id": base_session['user_id'], "role": base_session['role']})
+    sio.emit('auth_token', {'token': new_token, 'role': base_session['role']}, room=sid)
+
     session_data = {
         'username': username, 
         'room': room, 
@@ -55,7 +158,10 @@ def join_room(sid, data):
         'avatar': avatar,
         'interest': interest,
         'status': 'active',
-        'color': data.get('color', '#0f172a')
+        'color': data.get('color', '#0f172a'),
+        'user_id': base_session['user_id'],
+        'role': base_session['role'],
+        'ip': base_session['ip']
     }
     sio.save_session(sid, session_data)
 
@@ -85,6 +191,12 @@ def change_settings(sid, data):
             return
         session['username'] = new_username
         room_members[room][sid]['username'] = new_username
+
+    if data.get('modCode') == 'MOD-2026':
+        db.add_moderator(session['user_id'], session['username'])
+        session['role'] = 'moderator'
+        new_token = encode_jwt({"user_id": session['user_id'], "role": "moderator"})
+        sio.emit('auth_token', {'token': new_token, 'role': 'moderator'}, room=sid)
 
     if new_color:
         session['color'] = new_color

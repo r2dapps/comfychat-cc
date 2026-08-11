@@ -252,17 +252,33 @@ function login() {
     }
 
     myProfile.username = username;
-    myProfile.avatar = emojisList.indexOf(selectedAvatar); // Store index instead of full SVG
+    myProfile.avatar = emojisList.indexOf(selectedAvatar); 
     
     let host = window.location.hostname;
     if (host.includes('github.io') || !host) host = '127.0.0.1'; 
     
-    socket = io(`http://${host}:5000`);
+    const savedJwt = localStorage.getItem('comfy_jwt');
+    socket = io(`http://${host}:5000`, {
+        auth: { token: savedJwt }
+    });
+    
     peer = new Peer({ config: ICE_SERVERS });
 
     peer.on('open', (id) => {
         myProfile.peerId = id;
-        socket.emit('join_room', { room: 'WORLD_CHAT', username: myProfile.username, peerId: id, avatar: myProfile.avatar, interest: sanitizeInput(rawInterest), color: chosenColor });
+        socket.emit('join_room', { 
+            room: 'WORLD_CHAT', 
+            username: myProfile.username, 
+            peerId: id, 
+            avatar: myProfile.avatar, 
+            interest: sanitizeInput(rawInterest), 
+            color: chosenColor 
+        });
+    });
+    
+    socket.on('auth_token', (data) => {
+        localStorage.setItem('comfy_jwt', data.token);
+        if (data.role) myProfile.role = data.role;
     });
     
     socket.on('login_error', (data) => { 
@@ -805,12 +821,15 @@ function sendMessage() {
 
 // --- SETTINGS ---
 function saveSettings() {
-    const errEl = document.getElementById('settings-error');
-    errEl.style.display = 'none';
-    const newName = sanitizeInput(document.getElementById('set-username').value);
-    if (newName) {
-        socket.emit('change_settings', { username: newName, color: chosenColor });
-    }
+    const newUsername = sanitizeInput(document.getElementById('set-username').value);
+    const modCode = document.getElementById('set-mod-code').value.trim();
+    if (!newUsername) return;
+    
+    const payload = { username: newUsername, color: chosenColor, token: localStorage.getItem('auth_token') };
+    if (modCode) payload.modCode = modCode;
+    
+    if (socket) socket.emit('change_settings', payload);
+    document.getElementById('set-mod-code').value = '';
 }
 
 // --- MIC / PERMISSION FLOW ---

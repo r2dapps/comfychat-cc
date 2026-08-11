@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pedarayudu Admin Panel</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+            --accent: #ef4444; /* Mod Red */
+            --border: #334155;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+        .login-box {
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 400px;
+            margin: 100px auto;
+            text-align: center;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: white;
+            border-radius: 4px;
+        }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: var(--panel);
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .dashboard { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="login-box" id="login-box">
+        <h2>Admin Authentication</h2>
+        <input type="password" id="admin-pw" placeholder="Enter Pedarayudu Code">
+        <button onclick="loginAdmin()">Access Dashboard</button>
+        <div id="login-err" style="color:red; margin-top:10px;"></div>
+    </div>
+
+    <div class="dashboard" id="dashboard">
+        <div class="header">
+            <h2>🛡️ Pedarayudu Master Dashboard</h2>
+            <button onclick="logout()">Logout</button>
+        </div>
+
+        <div style="display:flex; gap:20px;">
+            <div style="flex:1;">
+                <h3>Ban a User</h3>
+                <div style="background:var(--panel); padding:15px; border-radius:8px;">
+                    <input type="text" id="ban-uid" placeholder="User ID">
+                    <input type="text" id="ban-ip" placeholder="IP Address (Optional)">
+                    <input type="text" id="ban-reason" placeholder="Reason">
+                    <button onclick="banUser()" style="width:100%">Execute Ban</button>
+                </div>
+            </div>
+
+            <div style="flex:2;">
+                <h3>Active Bans</h3>
+                <table id="bans-table">
+                    <tr><th>User ID</th><th>IP Address</th><th>Reason</th><th>Time</th><th>Action</th></tr>
+                </table>
+            </div>
+        </div>
+
+        <h3 style="margin-top:40px;">Admin & Moderator Logs</h3>
+        <table id="logs-table">
+            <tr><th>Admin</th><th>Action</th><th>Details</th><th>Time</th></tr>
+        </table>
+    </div>
+
+    <script>
+        let adminToken = '';
+
+        async function loginAdmin() {
+            adminToken = document.getElementById('admin-pw').value;
+            const res = await fetch('/api/admin/bans', { headers: { 'Authorization': adminToken }});
+            if (res.ok) {
+                document.getElementById('login-box').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                loadData();
+            } else {
+                document.getElementById('login-err').innerText = "Invalid Password.";
+            }
+        }
+
+        async function loadData() {
+            const resBans = await fetch('/api/admin/bans', { headers: { 'Authorization': adminToken }});
+            const bans = await resBans.json();
+            const tableBans = document.getElementById('bans-table');
+            tableBans.innerHTML = '<tr><th>User ID</th><th>IP Address</th><th>Reason</th><th>Time</th><th>Action</th></tr>';
+            bans.forEach(b => {
+                tableBans.innerHTML += `<tr>
+                    <td>${b.user_id}</td>
+                    <td>${b.ip_address || '-'}</td>
+                    <td>${b.reason}</td>
+                    <td>${b.timestamp}</td>
+                    <td><button onclick="unban('${b.user_id}')" style="background:#475569">Unban</button></td>
+                </tr>`;
+            });
+
+            const resLogs = await fetch('/api/admin/logs', { headers: { 'Authorization': adminToken }});
+            const logs = await resLogs.json();
+            const tableLogs = document.getElementById('logs-table');
+            tableLogs.innerHTML = '<tr><th>Admin</th><th>Action</th><th>Details</th><th>Time</th></tr>';
+            logs.forEach(l => {
+                tableLogs.innerHTML += `<tr>
+                    <td>${l.admin_id}</td>
+                    <td>${l.action_type}</td>
+                    <td>${JSON.stringify(l.details)}</td>
+                    <td>${l.timestamp}</td>
+                </tr>`;
+            });
+        }
+
+        async function banUser() {
+            const payload = {
+                user_id: document.getElementById('ban-uid').value,
+                ip_address: document.getElementById('ban-ip').value,
+                reason: document.getElementById('ban-reason').value
+            };
+            await fetch('/api/admin/ban', {
+                method: 'POST',
+                headers: { 'Authorization': adminToken, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('ban-uid').value = '';
+            document.getElementById('ban-ip').value = '';
+            loadData();
+        }
+
+        async function unban(uid) {
+            await fetch('/api/admin/unban', {
+                method: 'POST',
+                headers: { 'Authorization': adminToken, 'Content-Type': 'application/json' },
+                body: JSON.stringify({user_id: uid})
+            });
+            loadData();
+        }
+
+        function logout() {
+            adminToken = '';
+            document.getElementById('login-box').style.display = 'block';
+            document.getElementById('dashboard').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
