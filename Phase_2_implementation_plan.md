@@ -1,62 +1,77 @@
 # ComfyChat Phase 2: The Theater Microservice
 
-Based on your vision of a true "Movie Lover's Theater," we will keep the Theater completely uncoupled as its own independent Node.js Microservice (`theater_server.js`). This guarantees you can plug it into *any* future app without relying on the Python chat server.
+This document outlines the final, robust architecture for the Node.js Theater Microservice. It is designed to be a standalone, plug-and-play module with strict Admin controls and massive media support.
 
 ---
 
-## 1. Supported Media Sources & Solutions
+## 1. Supported Media Sources
 
-You raised excellent points about YouTube API keys and local file streaming. Here is how we will solve them:
+We are engineering the Theater to support the maximum amount of media possible without violating DRM restrictions. 
 
-### A. Keyless YouTube Scraping
-You asked if there is a way to NOT use a YouTube v3 API key. **Yes!**
-- Instead of using `yt-search` (which gets IP blocked), we will use `youtubei.js` (Innertube API). 
-- This library perfectly mimics the official YouTube web client. It bypasses the need for an API key completely and is much more resilient against IP blocking on cloud servers!
+### ✅ Official Iframe Support (Synced via Iframe APIs)
+- **YouTube:** Native support with zero API keys required.
+- **Vimeo:** Official player embedding.
+- **Dailymotion:** Official player embedding.
+- **Twitch:** Live streams and VODs.
 
-### B. Streaming Large Local Files (The 2GB Sunofy Method)
-If you want to stream a 2GB downloaded movie from your PC to your friends without a cloud server, we have two options:
-1. **The WebTorrent Method:** You select the 2GB file on your PC. Your browser instantly starts "seeding" it directly to your friends' browsers via WebRTC. As long as your upload speed is good, they will stream it directly from you.
-2. **The "Bring Your Own File" Method:** You tell your friends to download the exact same 2GB movie file. Everyone selects the file locally on their own PC. The server simply syncs the `play`/`pause`/`seek` commands, meaning zero bandwidth is used!
-*We will implement the HTML5 `<video>` tag to support this local file syncing.*
+### ✅ Direct Cloud Media (Synced via HTML5 `<video>`)
+- **Direct `.mp4` / `.webm` URLs:** Any direct video link hosted on AWS, Cloudinary, etc.
+- **Google Drive Videos:** Using the Google Drive direct-download link trick, we can stream Drive videos straight into the HTML5 player!
 
----
+### ✅ Huge Local Files (2GB+ Movies)
+- **WebTorrent Sync:** You select a 2GB movie on your PC. Your browser "seeds" it to your friends via WebRTC data channels. They stream it directly from you without any cloud servers involved.
+- **Bring-Your-Own-File:** Everyone downloads the exact same 2GB movie file beforehand. Everyone selects the file locally on their own PC. The server simply syncs the timestamps (`play`/`pause`/`seek`), using zero bandwidth!
 
-## 2. The True Theater UX & Workflow
-
-### Step 1: The Box Office (Ticketing)
-- Users receive a direct link (`theater.html?ticket=movieNight`).
-- They arrive at a "Lobby" screen to select their Avatar, Username, and book a seat on the visual map *before* entering.
-
-### Step 2: Entering the Cinema
-- A beautiful CSS Theater screen (dark ambient lighting, curtains).
-- **The Show Must Go On:** The server dictates the time. If a user joins 15 minutes late, their video instantly seeks to the 15-minute mark.
-
-### Step 3: Mobile-First Interaction & PWA
-- A collapsible **Emoji Reaction Card** (🍿, 😱, 😂) tailored for quick reactions during the movie.
-- **PWA Ready:** In the final stage, we will add a `manifest.json` and a Service Worker. This will turn ComfyChat into a **Progressive Web App (PWA)**, allowing users to install it on their home screens like a native app. We can easily convert this PWA into an Android `.apk` later!
+*(Note: Netflix, Prime Video, and Hulu are strictly blocked by DRM and cannot be embedded in this app).*
 
 ---
 
-## 3. Theater Admin & Content Control
+## 2. Admin vs. Member Roles (Clean Structure)
 
-### The Projection Booth (Admin Panel)
-- **Queue Management:** Searching adds videos to the **Up-Next Queue** instead of playing instantly.
-- **The Countdown:** When the Admin hits "Start Show," a 10-second cinematic countdown timer appears before the iframe loads and syncs perfectly.
-- **Handling Ads:** The Admin can use a "Force Sync" button if an ad throws everyone out of sync.
+We must define strict boundaries between who controls the theater and who watches.
+
+### How Roles are Defined
+1. **The Admin (Projectionist):** The user who clicks "Generate Ticket" in the Box Office Lobby is officially the **Room Creator**. 
+   - The Node.js server generates an **Admin Token (JWT)** for this specific user. 
+   - Only a browser holding this Admin Token will render the "Projection Booth" controls.
+2. **The Members (Audience):** When the Admin shares the ticket link with friends, those friends join as Members.
+   - They receive a **Guest Token**. 
+   - They can chat, react with emojis, and book seats for voice chat, but they *cannot* control the movie.
+
+### The Projection Booth (Admin Powers)
+The Admin has exclusive access to a hidden control panel below the video:
+- **Search & Add to Queue:** The Admin can search for videos or paste URLs.
+- **Start Show:** Initiates the 10-second cinematic countdown timer for everyone.
+- **Force Sync:** If a user gets an ad or their internet lags, the Admin clicks this to instantly drag all members to the correct timestamp.
+- **Kick Member:** The Admin can boot disruptive users from the theater.
+
+### Member Powers
+- **Request a Song/Movie:** Members can search for videos, but clicking them does *not* add them to the queue. It sends a "Request" to the Admin, who can approve or deny it.
+
+---
+
+## 3. The Search Engine (youtubei.js)
+
+You asked to make sure the keyless search is legit and handles huge playlists like your `Sunofy` local mode.
+- **What is it?** We will use `youtubei.js` (The Innertube API). 
+- **Is it legit?** Yes. This is the exact internal API that the official YouTube Web Client and YouTube Music app use. It does not scrape HTML (which is what gets you IP-blocked). It talks directly to YouTube's internal JSON endpoints.
+- **Capabilities:** It can instantly pull massive 100+ track playlists, full channel uploads, and high-quality search results without ever needing an API key. It is the most robust keyless solution available.
 
 ---
 
 ## 4. Execution Phases
 
-### Phase 2A: Node.js Security & State
-- Implement Firebase RTDB in `theater_server.js` to save room state.
-- Swap `yt-search` for `youtubei.js` for keyless YouTube searching.
+### Phase 2A: Node.js Security & Roles
+- Implement the Admin Token (JWT) vs Guest Token generation in `theater_server.js`.
+- Integrate `youtubei.js` for massive, keyless playlist/search fetching.
+- Wire up Firebase RTDB to save the Room State persistently.
 
 ### Phase 2B: The True Theater UI/UX
-- Rebuild `theater.html` with the Curtain/Lighting design and the Lobby Ticketing flow.
-- Add the Cinematic Countdown Timer and Emoji Reaction Card.
+- Build the "Lobby" for ticketing and seat booking.
+- Build the "Cinematic UI" (dark ambient lighting, curtains, embedded iframe).
+- Add the collapsible Emoji Reaction Card (🍿, 😱, 😂).
 
 ### Phase 2C: The Projection Booth & Advanced Media
-- Implement the "Add to Queue" logic and Authoritative Server Sync machine.
-- Add support for syncing Local File selections (HTML5 Video).
-- Finalize PWA (`manifest.json`) structure for future APK conversion.
+- Build the strict Admin controls (Add to Queue, Force Sync, Approve Requests).
+- Implement HTML5 `<video>` syncing for Google Drive and Local Files.
+- Wrap the app in a PWA `manifest.json` for future Android APK conversion.
