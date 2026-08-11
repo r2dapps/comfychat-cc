@@ -4,34 +4,24 @@ Based on your vision of a true "Movie Lover's Theater," we will keep the Theater
 
 ---
 
-## 1. Supported Media Sources & DRM Reality
+## 1. Supported Media Sources & Solutions
 
-Before we build the syncing engine, we must define exactly what media sources are technically possible in a browser-based watch party.
+You raised excellent points about YouTube API keys and local file streaming. Here is how we will solve them:
 
-### ✅ What WORKS perfectly (Iframe & HTML5)
-- **YouTube, Vimeo, Dailymotion:** Any platform with an official Embed API works perfectly. We can sync `play`, `pause`, and `seek` accurately.
-- **Direct `.mp4` URLs:** If you host a movie file on a cloud server (AWS S3, Google Drive direct link, etc.), we can sync a standard HTML5 `<video>` player perfectly.
+### A. Keyless YouTube Scraping
+You asked if there is a way to NOT use a YouTube v3 API key. **Yes!**
+- Instead of using `yt-search` (which gets IP blocked), we will use `youtubei.js` (Innertube API). 
+- This library perfectly mimics the official YouTube web client. It bypasses the need for an API key completely and is much more resilient against IP blocking on cloud servers!
 
-### ❌ What DOES NOT work (Netflix, Prime, Hulu)
-- **The DRM Blockade:** Netflix uses strict Digital Rights Management (Widevine) and blocks iframes. You **cannot** embed Netflix in your app, even if users log in with their credentials. 
-- *Note:* Apps like "Teleparty" (formerly Netflix Party) only work because they are **Browser Extensions** that inject code directly into the Netflix website. Our app is a standalone website, so it cannot bypass DRM.
-
-### ⚠️ Streaming a Downloaded Movie from your PC
-- You cannot stream a local `.mp4` from your hard drive into an iframe for other people to watch. 
-- **The Solution:** For this specific use case, we would need to implement a "Screen Share" WebRTC feature (like Discord), where you share your screen and stream the video directly to your friends. *We can plan this for Phase 3 if desired.*
-
----
-
-## 2. The YouTube Strategy (API vs Login)
-
-**Why we use the Server API instead of User Login:**
-We want the absolute lowest friction for your friends. If we force them to log in to YouTube via OAuth just to watch a video, many will bounce.
-- **Our Approach:** The Admin (You) provides a free **YouTube Data API v3 Key** to the Node.js server. The server handles all the searching and playlist fetching. 
-- The users simply load the official YouTube Iframe Player (which YouTube provides for free). It feels 100% genuine and official, but requires absolutely zero login effort from your friends!
+### B. Streaming Large Local Files (The 2GB Sunofy Method)
+If you want to stream a 2GB downloaded movie from your PC to your friends without a cloud server, we have two options:
+1. **The WebTorrent Method:** You select the 2GB file on your PC. Your browser instantly starts "seeding" it directly to your friends' browsers via WebRTC. As long as your upload speed is good, they will stream it directly from you.
+2. **The "Bring Your Own File" Method:** You tell your friends to download the exact same 2GB movie file. Everyone selects the file locally on their own PC. The server simply syncs the `play`/`pause`/`seek` commands, meaning zero bandwidth is used!
+*We will implement the HTML5 `<video>` tag to support this local file syncing.*
 
 ---
 
-## 3. The True Theater UX & Workflow
+## 2. The True Theater UX & Workflow
 
 ### Step 1: The Box Office (Ticketing)
 - Users receive a direct link (`theater.html?ticket=movieNight`).
@@ -41,12 +31,13 @@ We want the absolute lowest friction for your friends. If we force them to log i
 - A beautiful CSS Theater screen (dark ambient lighting, curtains).
 - **The Show Must Go On:** The server dictates the time. If a user joins 15 minutes late, their video instantly seeks to the 15-minute mark.
 
-### Step 3: Mobile-First Interaction
+### Step 3: Mobile-First Interaction & PWA
 - A collapsible **Emoji Reaction Card** (🍿, 😱, 😂) tailored for quick reactions during the movie.
+- **PWA Ready:** In the final stage, we will add a `manifest.json` and a Service Worker. This will turn ComfyChat into a **Progressive Web App (PWA)**, allowing users to install it on their home screens like a native app. We can easily convert this PWA into an Android `.apk` later!
 
 ---
 
-## 4. Theater Admin & Content Control
+## 3. Theater Admin & Content Control
 
 ### The Projection Booth (Admin Panel)
 - **Queue Management:** Searching adds videos to the **Up-Next Queue** instead of playing instantly.
@@ -55,16 +46,17 @@ We want the absolute lowest friction for your friends. If we force them to log i
 
 ---
 
-## 5. Execution Phases
+## 4. Execution Phases
 
 ### Phase 2A: Node.js Security & State
 - Implement Firebase RTDB in `theater_server.js` to save room state.
-- Integrate the official YouTube Data API.
+- Swap `yt-search` for `youtubei.js` for keyless YouTube searching.
 
 ### Phase 2B: The True Theater UI/UX
 - Rebuild `theater.html` with the Curtain/Lighting design and the Lobby Ticketing flow.
 - Add the Cinematic Countdown Timer and Emoji Reaction Card.
 
-### Phase 2C: The Projection Booth
-- Implement the "Add to Queue" logic.
-- Perfect the Authoritative Server Sync machine.
+### Phase 2C: The Projection Booth & Advanced Media
+- Implement the "Add to Queue" logic and Authoritative Server Sync machine.
+- Add support for syncing Local File selections (HTML5 Video).
+- Finalize PWA (`manifest.json`) structure for future APK conversion.
