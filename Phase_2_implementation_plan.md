@@ -1,76 +1,66 @@
-# ComfyChat: Production-Grade Architecture & Phase 2 Plan
+# ComfyChat Phase 2: Microservices Production Plan
 
-To ensure this project can be commercialized, sold, or deployed to the public securely, we are upgrading the architecture from a casual MVP to a **Production-Grade Ecosystem**. Security, networking, and synchronization will be engineered robustly from the ground up.
-
----
-
-## 1. Enterprise WebRTC Voice Architecture (Zero-Cost & Scalable)
-
-To support voice chat in both standard rooms and the Theater without incurring massive bandwidth costs, we use WebRTC. Here is how it handles different networks:
-
-### A. Local Area Network (LAN)
-If users are on the same Wi-Fi, WebRTC uses **Host Candidates** (or mDNS). The audio data travels directly from Device A to Device B over the local router. It does not require internet, and latency is near zero.
-
-### B. Wide Area Network (Internet / Different Wi-Fi)
-We use **STUN (Session Traversal Utilities for NAT)**. 
-- We configure the app to hit `stun:stun.l.google.com:19302`. 
-- The STUN server simply echoes back the user's public IP address. Once exchanged, the audio data travels directly between the users. **This is completely free and works for ~85% of standard internet users.**
-
-### C. The Production Reality (Symmetric NATs & TURN)
-In enterprise environments (corporate/university networks), strict firewalls block STUN. For these ~15% of users, P2P will fail. 
-- **Graceful Failure UI:** If the WebRTC connection fails due to a strict firewall, the frontend will automatically detect this and display a **friendly UI prompt** explaining that their current network/VPN is blocking voice chat.
-- **Future-Proofing:** For now, the Python backend will serve the free STUN server. But when you are ready to commercialize, you simply update the Python server to provide paid **TURN server** credentials to fallback when STUN fails. *The frontend code will not need to change.*
+Based on your requirement to keep the Theater as a standalone, plug-and-play module that any app can trigger, we are officially shifting to a **Microservices Architecture**. We will not merge the code. Instead, we will build a secure bridge between them.
 
 ---
 
-## 2. Production Security Layer (JWT & Abstraction)
+## 1. The Microservices Architecture
 
-We cannot trust simple `userId` strings stored in `localStorage`, as malicious users can easily edit them to evade bans.
+We will run two isolated backends. They do not share memory, but they will share **Security** and **Database access**.
 
-### Cryptographic Identity (JWT)
-1. **First Connection:** When a user opens the app, the server generates a cryptographically signed **JSON Web Token (JWT)** containing a unique immutable ID and signs it with a secret key.
-2. **Storage:** The browser stores this JWT. 
-3. **Validation:** Every Socket.io connection must pass this JWT. The server verifies the signature. If a user modifies their JWT, the signature becomes invalid, and the socket is immediately rejected.
-4. **Banning:** When a Mod bans a user, the server adds the immutable ID inside the JWT to the database. Even if the user uses a VPN, their JWT betrays them. If they clear their browser cache to get a new JWT, the secondary **IP Ban** catches them.
+### Service A: The Python Chat Engine (Port 5000)
+- **Role:** Handles World Chat, DMs, User Authentication, and SuperAdmin moderation.
+- **The Key:** When a user logs in, this server generates a **JWT (JSON Web Token)** cryptographically signed with a `SECRET_KEY`.
 
-### Database Abstraction Pattern
-We will build a `DatabaseRepository` interface.
-- **Local Dev:** `SQLiteRepository` (Fast, offline, local testing).
-- **Production:** `PostgresRepository` or `FirebaseRepository`.
-You switch between them by changing a single `.env` variable (`DB_MODE=sqlite` vs `DB_MODE=postgres`).
+### Service B: The Node.js Theater Module (Port 5001)
+- **Role:** A universal Watch Party server. Any app (ComfyChat, Unity VR, Sunofy) can connect to it.
+- **The Bridge:** To prevent banned users from simply opening the Theater, the Node.js server will be given the exact same `SECRET_KEY`. When a user connects to the Theater, Node.js verifies their JWT. If they are banned in Python, Node.js instantly drops them too.
 
 ---
 
-## 3. Robust Theater Ecosystem (YouTube Sync)
+## 2. Deep Dive: Hardening the Node.js Server
 
-Syncing YouTube videos across different internet speeds is complex because users buffer at different rates. We will not use a "dumb" client-to-client sync; we will use an Authoritative Server State.
+I reviewed your `theater_server.js`. It is a great prototype, but as you suspected, it has structural flaws that will break in production. Here is how we will fix it:
 
-### The State Machine
-1. **Server Authority:** The Python server maintains the exact state of the Theater Room: `videoId`, `isPlaying`, `serverStartTime`, and `startOffset`.
-2. **Buffering Grace & Loading UI:** When the Admin presses "Play" (or skips to a new video), the server tells all clients to load the video. **An elegant "Syncing..." loading screen will overlay the video** so users know exactly why they are waiting. The server waits 2 seconds, then commands all clients to start playing at the exact same millisecond, removing the loading screen.
-3. **Drift Correction:** Every 5 seconds, clients ping the server. If a client is lagging due to slow internet, the client's video is aggressively hard-seeked to match the server time.
+### Flaw 1: YouTube Scraper IP Blocking
+- **Current State:** You are using `yt-search`. Cloud providers (Render/Heroku) share IP addresses. YouTube aggressively blocks these IPs when they detect scraping. Your search and playlists will randomly fail.
+- **The Fix:** We must transition the Node.js server to use the official **YouTube Data API v3**. It provides a generous free tier (10,000 requests/day) and guarantees you will never be IP blocked.
 
-### UI/UX & Queue System
-- **Cinematic UI:** The main chat becomes a translucent overlay, and a 20-seat visual grid displays connected avatars.
-- **Robust Playlist Queue:** We will implement a robust YouTube Queue system heavily referencing your `Sunofy` and `yt-fy` repositories. Users can request videos to be added to the queue, and the server will manage the playlist state, automatically advancing to the next video when one finishes.
+### Flaw 2: In-Memory State Wipes
+- **Current State:** Rooms are stored in `const theaterRooms = {}`. When the cloud provider restarts your server (which happens daily on free tiers), all queues and seats are wiped.
+- **The Fix:** We will hook the Node.js server into the same **Firebase RTDB** as the Python server. Node.js will continually save the "Current Video" and "Queue" to Firebase. If the server restarts, it pulls the data back and seamlessly resumes the movie.
+
+### Flaw 3: Weak Synchronization
+- **Current State:** The server blindly passes `play` and `seek` commands from the Admin to the users. It doesn't know where the video actually is.
+- **The Fix (The State Machine):** Node.js must act as the absolute authority. It tracks exactly how many milliseconds into the video we are. If a user with slow internet connects, Node.js calculates the exact timestamp they should jump to so they are perfectly in sync with the Admin.
 
 ---
 
-## 4. Execution Sub-Phases
+## 3. Theater UI/UX Complete Redesign
 
-### Phase 2A: Core Security & Database Layer
-- Implement `DatabaseRepository` (SQLite for now, structured for Postgres/Firebase).
-- Implement JWT generation, signing, and Socket.io authentication middleware.
-- Build the persistent Ban System (JWT ID + IP).
+You mentioned you didn't like the current `theater.html` design. We will scrap the bottom tabs and build a true **Cinematic Experience**.
 
-### Phase 2B: Moderator & Admin Systems
-- Build the `pedarayudu.html` SuperAdmin dashboard.
-- Implement the "Server Master Switch" (On/Off override).
-- Add the hidden "Mod Invite Code" in settings to elevate users to Moderators.
-- Grant Mods the ability to Kick and Delete, logging all actions to the Database.
+### The "Immersion First" Design
+1. **The Canvas:** The YouTube player takes up 100% of the screen background. It will have a CSS "ambient glow" matching the video colors.
+2. **The Overlay UI:** When you hover or tap the screen, a glassy UI fades in. 
+   - **Left Panel (Collapsible):** Contains the 20-seat visual layout and the Up-Next Queue. 
+   - **Right Panel (Collapsible):** The Chat and Emoji reactions.
+3. **Focus Mode:** If you don't move your mouse for 3 seconds, all UI panels smoothly fade out, leaving only the video.
+4. **Standalone Entry:** Users can enter via a direct link (`theater.html?ticket=XYZ`). The UI will handle them as "Guest Viewers" if they don't have a ComfyChat JWT, but they won't be allowed to chat.
 
-### Phase 2C: The Robust Theater Room
-- Build the `theater.html` cinematic UI and ticketing logic (2-minute expiring URLs).
-- Implement the Authoritative Server State machine for YouTube syncing.
-- Implement the WebRTC audio integration for theater seats.
-- Implement the YouTube Queue & Playlist Request system.
+---
+
+## 4. Phased Execution Roadmap
+
+### Phase 2A: The Python Security & Admin Core
+- Implement Firebase RTDB in `server.py`.
+- Implement JWT generation and the `pedarayudu.html` SuperAdmin Ban system.
+
+### Phase 2B: Hardening the Node.js Theater
+- Copy the JWT verification logic into `theater_server.js` so it respects Python's bans.
+- Replace `yt-search` with the official YouTube Data API.
+- Implement the Authoritative State Machine for perfect syncing.
+
+### Phase 2C: The Cinematic Redesign
+- Rebuild `theater.html` with the new ambient, collapsible UI.
+- Wire up the WebRTC voice system for the seats.
