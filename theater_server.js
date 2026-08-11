@@ -4,57 +4,34 @@ const https = require('https');
 const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const ytSearch = require('yt-search');
+const jwt = require('jsonwebtoken');
+const sqlite3 = require('sqlite3').verbose();
+const { Innertube } = require('youtubei.js');
 
-async function fetchPlaylistFallback(listId) {
-    return new Promise((resolve, reject) => {
-        https.get(`https://www.youtube.com/playlist?list=${listId}`, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                const match = data.match(/var ytInitialData = (\{.*?\});<\/script>/);
-                if (!match) return reject(new Error("ytInitialData not found"));
-                
-                try {
-                    const jsonData = JSON.parse(match[1]);
-                    let videos = [];
-                    let seen = new Set();
-                    
-                    function findLockups(obj) {
-                        if (!obj || typeof obj !== 'object') return;
-                        if (Array.isArray(obj)) return obj.forEach(findLockups);
-                        
-                        if (obj.playlistVideoViewModel || obj.lockupViewModel) {
-                            const lockup = obj.playlistVideoViewModel || obj.lockupViewModel;
-                            const videoId = lockup.contentId || lockup.videoId;
-                            const title = lockup.title?.content || lockup.metadata?.lockupMetadataViewModel?.title?.content;
-                            
-                            let channel = "YouTube";
-                            try { channel = lockup.metadata.lockupMetadataViewModel.metadata.contentMetadataViewModel.metadataRows[0].metadataParts[0].text.content; } catch(e) {}
-                            
-                            let thumbnail = "";
-                            try {
-                                const sources = lockup.contentImage.thumbnailViewModel.image.sources;
-                                thumbnail = sources[sources.length - 1].url;
-                            } catch(e) {}
+const SECRET_KEY = "SUPER_SECRET_COMFY_KEY_123";
+const db = new sqlite3.Database(path.join(__dirname, 'comfychat.db'));
 
-                            if (videoId && title && !seen.has(videoId)) {
-                                seen.add(videoId);
-                                videos.push({ videoId, title, thumbnail, author: { name: channel } });
-                            }
-                        }
-                        Object.values(obj).forEach(findLockups);
-                    }
-                    
-                    findLockups(jsonData);
-                    resolve({ videos });
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        }).on('error', reject);
-    });
+let yt;
+Innertube.create().then(instance => {
+    yt = instance;
+    console.log('[Theater] Innertube API initialized');
+});
+
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS theater_state (
+        room_code TEXT PRIMARY KEY,
+        state_json TEXT
+    )`);
+});
+
+function saveRoomState(roomCode) {
+    if (theaterRooms[roomCode]) {
+        db.run('INSERT OR REPLACE INTO theater_state (room_code, state_json) VALUES (?, ?)', 
+            [roomCode, JSON.stringify(theaterRooms[roomCode])]);
+    }
 }
+
+
 
 const app = express();
 app.use(cors());
@@ -71,6 +48,23 @@ const io = new Server(server, {
 // theater_rooms[room_code] = { admin_sid, queue, video_id, is_playing, current_time }
 const theaterRooms = {};
 
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error('Authentication error'));
+    
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err) return next(new Error('Authentication error'));
+        socket.user_id = decoded.user_id;
+        socket.role = decoded.role;
+        
+        const ip = socket.handshake.address;
+        db.get('SELECT * FROM banned_users WHERE user_id = ? OR ip_address = ?', [socket.user_id, ip], (err, row) => {
+            if (row) return next(new Error('Banned'));
+            next();
+        });
+    });
+});
+
 io.on('connection', (socket) => {
     console.log(`[Theater] Connect: ${socket.id}`);
 
@@ -80,41 +74,52 @@ io.on('connection', (socket) => {
         
         socket.join(roomCode);
         
-        // Initialize room if not exists
-        if (!theaterRooms[roomCode]) {
-            theaterRooms[roomCode] = {
-                admin_sid: socket.id,
-                queue: [],
-                seats: {}, // seatId -> { username, avatar, interests, sid }
-                video_id: 'aqz-KE-bpKQ',
-                is_playing: false,
-                current_time: 0
-            };
-            console.log(`[Theater] Room ${roomCode} created by ${socket.id}`);
-        }
-        // python bug fix:
-        theaterRooms[roomCode].is_playing = theaterRooms[roomCode].is_playing === true;
+        const finishJoin = () => {
+            theaterRooms[roomCode].is_playing = theaterRooms[roomCode].is_playing === true;
 
-        const roomState = theaterRooms[roomCode];
-        const isAdmin = (roomState.admin_sid === socket.id);
-        
-        socket.emit('theater_admin_status', { is_admin: isAdmin });
-        socket.emit('theater_state_sync', {
-            video_id: roomState.video_id,
-            is_playing: roomState.is_playing,
-            current_time: roomState.current_time
-        });
-        socket.emit('theater_queue_update', roomState.queue);
-        socket.emit('theater_seats_sync', roomState.seats);
-        
-        const welcomeMsg = isAdmin 
-            ? `Welcome Admin ${username}! You control the theater.`
-            : `Welcome ${username}! You are watching in view-only mode.`;
+            const roomState = theaterRooms[roomCode];
+            const isAdmin = (roomState.admin_sid === socket.id) || (socket.role === 'moderator');
             
-        socket.emit('theater_chat', { sender: 'System', text: welcomeMsg, isSystem: true });
-        
-        // Save user context
-        socket.data = { room: roomCode, username: username, is_admin: isAdmin };
+            if (isAdmin) roomState.admin_sid = socket.id; // claim admin
+            
+            socket.emit('theater_admin_status', { is_admin: isAdmin });
+            socket.emit('theater_state_sync', {
+                video_id: roomState.video_id,
+                is_playing: roomState.is_playing,
+                current_time: roomState.current_time
+            });
+            socket.emit('theater_queue_update', roomState.queue);
+            socket.emit('theater_seats_sync', roomState.seats);
+            
+            const welcomeMsg = isAdmin 
+                ? `Welcome Admin ${username}! You control the theater.`
+                : `Welcome ${username}! You are watching in view-only mode.`;
+                
+            socket.emit('theater_chat', { sender: 'System', text: welcomeMsg, isSystem: true });
+            
+            socket.data = { room: roomCode, username: username, is_admin: isAdmin };
+        };
+
+        if (!theaterRooms[roomCode]) {
+            db.get('SELECT state_json FROM theater_state WHERE room_code = ?', [roomCode], (err, row) => {
+                if (row && row.state_json) {
+                    theaterRooms[roomCode] = JSON.parse(row.state_json);
+                    theaterRooms[roomCode].admin_sid = socket.id; // Default new admin
+                } else {
+                    theaterRooms[roomCode] = {
+                        admin_sid: socket.id,
+                        queue: [],
+                        seats: {}, 
+                        video_id: 'aqz-KE-bpKQ',
+                        is_playing: false,
+                        current_time: 0
+                    };
+                }
+                finishJoin();
+            });
+        } else {
+            finishJoin();
+        }
     });
 
     socket.on('theater_command', async (data) => {
@@ -132,43 +137,47 @@ io.on('connection', (socket) => {
             roomState.is_playing = true;
             roomState.current_time = 0;
             io.to(roomCode).emit('theater_action', { action: 'load', video_id: data.video_id });
+            saveRoomState(roomCode);
         } 
         else if (cmd === 'play') {
             roomState.is_playing = true;
             roomState.current_time = data.time || 0;
             io.to(roomCode).emit('theater_action', { action: 'play', time: roomState.current_time });
+            saveRoomState(roomCode);
         } 
         else if (cmd === 'pause') {
             roomState.is_playing = false;
             roomState.current_time = data.time || 0;
             io.to(roomCode).emit('theater_action', { action: 'pause', time: roomState.current_time });
+            saveRoomState(roomCode);
         } 
         else if (cmd === 'seek') {
             roomState.current_time = data.time || 0;
             io.to(roomCode).emit('theater_action', { action: 'seek', time: roomState.current_time });
+            saveRoomState(roomCode);
         }
         else if (cmd === 'search_youtube') {
             const query = data.query || '';
-            if (!query) return;
+            if (!query || !yt) return;
             
             try {
-                const r = await ytSearch(query);
+                const results = await yt.search(query);
                 
-                const videos = (r.videos || []).slice(0, 10).map(v => ({
-                    id: v.videoId,
-                    title: v.title,
-                    thumbnail: v.thumbnail,
-                    duration: v.timestamp || '0:00',
-                    channel: v.author?.name || 'Unknown',
+                const videos = results.results.filter(v => v.type === 'Video').slice(0, 10).map(v => ({
+                    id: v.id,
+                    title: v.title.text,
+                    thumbnail: v.best_thumbnail ? v.best_thumbnail.url : '',
+                    duration: v.duration.text || '0:00',
+                    channel: v.author.name || 'Unknown',
                     type: 'video'
                 }));
                 
-                const playlists = (r.lists || []).slice(0, 5).map(p => ({
-                    id: p.listId,
-                    title: p.title,
-                    thumbnail: p.thumbnail,
-                    duration: `${p.videoCount} videos`,
-                    channel: p.author?.name || 'Unknown',
+                const playlists = results.results.filter(v => v.type === 'Playlist').slice(0, 5).map(p => ({
+                    id: p.id,
+                    title: p.title.text,
+                    thumbnail: p.first_video && p.first_video.thumbnails ? p.first_video.thumbnails[0].url : '',
+                    duration: p.video_count.text || 'Unknown',
+                    channel: p.author.name || 'Unknown',
                     type: 'playlist'
                 }));
                 
@@ -180,25 +189,23 @@ io.on('connection', (socket) => {
         }
         else if (cmd === 'load_playlist') {
             const playlistId = data.playlist_id;
-            if (!playlistId) return;
+            if (!playlistId || !yt) return;
             
             try {
-                // Try fallback custom HTML parser directly because ytSearch listId is currently broken
-                const list = await fetchPlaylistFallback(playlistId);
+                const list = await yt.getPlaylist(playlistId);
                 
                 if (list && list.videos && list.videos.length > 0) {
                     const first20 = list.videos.slice(0, 20);
                     
                     for (const v of first20) {
                         roomState.queue.push({
-                            id: v.videoId,
-                            title: v.title,
-                            thumbnail: v.thumbnail,
-                            channel: v.author?.name || 'Unknown'
+                            id: v.id,
+                            title: v.title.text,
+                            thumbnail: v.best_thumbnail ? v.best_thumbnail.url : (v.thumbnails && v.thumbnails.length > 0 ? v.thumbnails[0].url : ''),
+                            channel: v.author.name || 'Unknown'
                         });
                     }
                     
-                    // Load first video immediately
                     const firstVideo = roomState.queue.shift();
                     roomState.video_id = firstVideo.id;
                     roomState.is_playing = true;
@@ -206,6 +213,7 @@ io.on('connection', (socket) => {
                     
                     io.to(roomCode).emit('theater_action', { action: 'load', video_id: roomState.video_id });
                     io.to(roomCode).emit('theater_queue_update', roomState.queue);
+                    saveRoomState(roomCode);
                 }
             } catch (err) {
                 console.error("Playlist load error:", err);
